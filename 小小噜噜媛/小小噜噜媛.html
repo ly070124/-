@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>o(≧v≦)o小小监视器o(≧v≦)o</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei",sans-serif;}
+
+        body {
+            background:#1a1a2e;
+            color:#fff;
+            padding:2rem;
+            min-height:100vh;
+            background-image:url("bg.jpg");
+            background-size:cover;
+            background-position:center;
+            background-attachment:fixed;
+            position:relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content:"";
+            position:fixed;
+            top:0;
+            left:0;
+            width:100%;
+            height:100%;
+            background:rgba(26,26,46,0.65);
+            z-index:-1;
+        }
+
+        /* 左右两侧跳动图片 */
+        .side-img {
+            position: fixed;
+            bottom: 80px;
+            width: 80px;
+            height: 80px;
+            z-index: 10;
+        }
+        .left-img {
+            left: 30px;
+            animation: sideJump 1.2s infinite ease-in-out;
+        }
+        .right-img {
+            right: 30px;
+            animation: sideJump 1.2s infinite ease-in-out 0.3s;
+        }
+        .side-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 0 10px rgba(255, 200, 100, 0.6));
+        }
+
+        .container {max-width:900px;margin:0 auto;position:relative;z-index:5;}
+        .header {display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;}
+        .title {font-size:2rem;font-weight:bold;display:flex;align-items:center;gap:10px;}
+        .title img {width:40px;height:40px;object-fit:contain;animation:bounce 2s infinite ease-in-out;}
+
+        .status {display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;color:#ff4444;font-size:0.9rem;background:rgba(255,255,255,0.1);}
+        .status-dot {width:10px;height:10px;background:#ff4444;border-radius:50%;box-shadow:0 0 8px #ff4444;animation:blink 1s infinite;}
+
+        .cards {display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem;}
+        .card {
+            background:rgba(30,41,59,0.75);
+            border-radius:16px;
+            padding:2rem;
+            text-align:center;
+            border:1px solid rgba(255,255,255,0.2);
+            box-shadow:0 0 15px rgba(255,165,0,0.15);
+            transition:all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .card:hover {
+            box-shadow:0 0 25px rgba(255,200,100,0.35);
+            transform:translateY(-5px) scale(1.02);
+        }
+
+        .icon {
+            width:50px;height:50px;margin-bottom:1rem;
+            filter:drop-shadow(0 0 8px rgba(255,200,100,0.8));
+            object-fit:contain;
+            animation:pulse 2s infinite ease-in-out;
+        }
+
+        .value {font-size:3rem;font-weight:bold;margin-bottom:0.5rem;transition:color 0.3s ease;}
+        .label {font-size:1rem;color:#ddd;margin-bottom:0.3rem;}
+        .unit {font-size:0.9rem;color:#bbb;}
+        .footer {text-align:center;margin-top:2rem;color:#aaa;font-size:1rem;}
+
+        /* 基础动画 */
+        @keyframes bounce {
+            0%,100% {transform:translateY(0);}
+            50% {transform:translateY(-5px);}
+        }
+        @keyframes blink {
+            0%,100% {opacity:1;}
+            50% {opacity:0.4;}
+        }
+        @keyframes pulse {
+            0%,100% {transform:scale(1);}
+            50% {transform:scale(1.05);}
+        }
+        @keyframes sideJump {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-18px); }
+        }
+        .value.updating {
+            color:#ffdd77;
+            text-shadow:0 0 10px rgba(255,221,119,0.8);
+        }
+
+        /* 全局飘落装饰 */
+        .deco {
+            position: fixed;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0.6;
+            animation: fall linear infinite;
+        }
+        @keyframes fall {
+            0% { transform: translateY(-50px) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.6; }
+            90% { opacity: 0.6; }
+            100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+
+        /* 小狗脚印 向上爬行动画 */
+        .footprint {
+            position: fixed;
+            width: 35px;
+            height: 35px;
+            opacity: 0.55;
+            pointer-events: none;
+            z-index: 3;
+            animation: footWalk linear infinite;
+        }
+        @keyframes footWalk {
+            0% {
+                bottom: -40px;
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.55;
+            }
+            90% {
+                opacity: 0.55;
+            }
+            100% {
+                bottom: 100vh;
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 自动生成飘落装饰 -->
+    <script>
+        const decoCount = 10;
+        const decoImages = ['leaf.png', 'flower.png', 'star.png'];
+        for (let i = 0; i < decoCount; i++) {
+            const deco = document.createElement('div');
+            deco.className = 'deco';
+            deco.style.left = Math.random() * 100 + 'vw';
+            deco.style.animationDuration = (Math.random() * 10 + 10) + 's';
+            deco.style.animationDelay = Math.random() * 10 + 's';
+            const img = document.createElement('img');
+            img.src = decoImages[Math.floor(Math.random() * decoImages.length)];
+            img.style.width = '25px';
+            img.style.height = '25px';
+            deco.appendChild(img);
+            document.body.appendChild(deco);
+        }
+
+        // 自动生成左右两组爬行脚印
+        function createFootPrint() {
+            const foot = document.createElement('img');
+            foot.className = 'footprint';
+            foot.src = 'foot.png'; // 脚印图片 foot.png
+            // 分左右两条路径
+            let pos = Math.random() > 0.5 ? 8 + Math.random() * 15 : 77 + Math.random() * 15;
+            foot.style.left = pos + '%';
+            foot.style.animationDuration = (Math.random() * 8 + 12) + 's';
+            document.body.appendChild(foot);
+            // 定时清理，防止元素堆积
+            setTimeout(()=>{
+                foot.remove();
+            },20000);
+        }
+        // 每隔1.2秒生成一个脚印
+        setInterval(createFootPrint, 1200);
+    </script>
+
+    <!-- 左右底部跳动图 -->
+    <div class="side-img left-img">
+        <img src="left.jpg" alt="装饰图">
+    </div>
+    <div class="side-img right-img">
+        <img src="right.jpg" alt="装饰图">
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="title">
+                <img src="logo.jpg" alt="小狗">
+                Σ（・□・；）小狗监控终端（＾Ｏ＾☆♪
+            </div>
+            <div class="status" id="statusBox">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">离线</span>
+            </div>
+        </div>
+        <div class="cards">
+            <div class="card">
+                <img src="temp.jpg" alt="温度" class="icon">
+                <div class="value" id="temp">0.00</div>
+                <div class="label">温度</div>
+                <div class="unit">°C</div>
+            </div>
+            <div class="card">
+                <img src="hum.jpg" alt="湿度" class="icon">
+                <div class="value" id="hum">0.00</div>
+                <div class="label">湿度</div>
+                <div class="unit">%RH</div>
+            </div>
+            <div class="card">
+                <img src="light.jpg" alt="光照" class="icon">
+                <div class="value" id="lux">0.00</div>
+                <div class="label">光照</div>
+                <div class="unit">LUX</div>
+            </div>
+            <div class="card">
+                <img src="soil.jpg" alt="土壤" class="icon">
+                <div class="value" id="adc">0</div>
+                <div class="label">土壤湿度</div>
+                <div class="unit">ADC</div>
+            </div>
+        </div>
+        <div class="footer">
+            <div id="time">当前时间：--:--:--</div>
+        </div>
+    </div>
+
+    <script>
+        const MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt";
+        const MQTT_TOPIC = "ly";
+        const MQTT_USER = "emqx";
+        const MQTT_PWD = "public";
+
+        const statusEl = document.getElementById("statusBox");
+        const statusDot = document.getElementById("statusDot");
+        const statusText = document.getElementById("statusText");
+
+        const tempEl = document.getElementById("temp");
+        const humEl = document.getElementById("hum");
+        const luxEl = document.getElementById("lux");
+        const adcEl = document.getElementById("adc");
+        const timeEl = document.getElementById("time");
+
+        function updateTime(){
+            const now = new Date();
+            timeEl.textContent = `当前时间：${now.toLocaleString("zh-CN")}`;
+        }
+        setInterval(updateTime,1000);
+        updateTime();
+
+        function setOffline() {
+            statusEl.style.color = "#ff4444";
+            statusDot.style.background = "#ff4444";
+            statusDot.style.boxShadow = "0 0 8px #ff4444";
+            statusText.textContent = "离线";
+        }
+
+        function setOnline() {
+            statusEl.style.color = "#00ff88";
+            statusDot.style.background = "#00ff88";
+            statusDot.style.boxShadow = "0 0 8px #00ff88";
+            statusText.textContent = "在线";
+        }
+
+        function flashUpdate(el, newVal) {
+            el.textContent = newVal;
+            el.classList.add("updating");
+            setTimeout(() => el.classList.remove("updating"), 300);
+        }
+
+        const client = mqtt.connect(MQTT_BROKER,{username:MQTT_USER,password:MQTT_PWD});
+
+        client.on("connect",()=>{
+            client.subscribe(MQTT_TOPIC);
+        });
+
+        client.on("error",()=>{
+            setOffline();
+        });
+
+        client.on("message",(topic,message)=>{
+            try{
+                const data = JSON.parse(message.toString());
+                flashUpdate(tempEl, (data["温度"]||0.0).toFixed(1));
+                flashUpdate(humEl, (data["湿度"]||0.0).toFixed(1));
+                flashUpdate(luxEl, data["光照"]||0);
+                flashUpdate(adcEl, data["土壤"]||0);
+                setOnline();
+            }catch(e){
+                setOffline();
+            }
+        });
+    </script>
+</body>
+</html>
